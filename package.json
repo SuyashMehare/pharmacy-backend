@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "gateway": "nodemon src/mocks/razorpay/server.rezorpay.mock.js",
+    "bank": "nodemon src/mocks/bank/server.bank.mock.js",
+    "dev": "nodemon src/index.js"
   },
   "keywords": [],
   "author": "",

@@ -1,5 +1,5 @@
 
-
+const Cart = require('../models/others/cart.model')
 const Transaction_Order = require('../models/orders/transaction_order');
 const Transaction = require('../models/orders/transaction.model');
 const Order = require('../models/orders/order.model');
@@ -200,6 +200,51 @@ async function abortOrder(req, res, next) {
 
 }
 
+
+
+/**
+ * Cart
+ */
+
+/**
+async function addToCart(req, res, next) {
+    const { productId } = req.body;
+    try {
+        await Cart.findOneAndUpdate({user: req.user.id}, {
+            $push: {
+                product: productId
+            }
+        })
+        
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function removeFromCart(req, res, next) {
+    const { productId } = req.body;
+    try {
+        await Cart.findOneAndUpdate({user: req.user.id}, {
+            $pull: {
+                product: productId
+            }
+        })
+        
+    } catch (error) {
+        next(error);
+    }
+}
+
+
+async function fetchCart(req, res, next) {
+    try {
+        const cart = await Cart.findOne({user: req.user.id}).populate('product');
+        sendResponse(res, 200, cart);
+    } catch (error) {
+        next(error);
+    }
+}
+*/
 
 
 module.exports = {
