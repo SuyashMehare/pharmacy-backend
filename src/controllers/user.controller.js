@@ -8,6 +8,7 @@ const Product = require('../models/others/product.model');
 const ApiError = require('../utils/ApiError');
 const { sendResponse } = require('../utils/ApiResponse');
 const { default: mongoose } = require('mongoose');
+const { sendEventToUser, addClient } = require('../services/sse.service');
 
 async function getProducts(req, res, next) {
     try {
@@ -37,6 +38,69 @@ async function getProducts(req, res, next) {
         }, "Products retrieved successfully");
     } catch (error) {
         next(error);
+    }
+}
+
+async function subscribeProductPrice(req, res, next) {
+    const { productId } = req.body
+    const userId = req.user.id;
+    
+    try {
+        const product = await Product.findByIdAndUpdate(productId, {
+            $addToSet: { priceFeedSubscribers: userId },
+        }, { new: true })
+
+
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+
+        addClient(userId, res);
+
+        const pendingNotifications = await Notification.find({
+            user: userId,
+            product: productId,
+            delivered: false
+        });
+
+
+        for (const notification of pendingNotifications) {
+            const eventData = {
+                type: 'PRICE_UPDATE',
+                productId: product._id,
+                productTitle: product.title,
+                oldPrice: notification.oldPrice,
+                newPrice: notification.newPrice,
+                updatedAt: notification.createdAt
+            };
+
+            sendEventToUser(userId, eventData);
+            notification.delivered = true;
+            await notification.save();
+        }
+
+        sendResponse(res, 201, null ,'User successfully subscribed product ' + productId)
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function unsubscribeFromProduct(req, res, next) {
+    try {
+        const { productId } = req.params;
+        const userId = req.user.id;
+
+        // Remove user from product's subscribers
+        await Product.findByIdAndUpdate(productId, {
+            $pull: { priceFeedSubscribers: userId }
+        });
+
+        // Close SSE connection if it exists
+        removeClient(userId);
+
+        res.json({ success: true, message: 'Unsubscribed successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 }
 
@@ -249,6 +313,8 @@ async function fetchCart(req, res, next) {
 
 module.exports = {
     getProducts,
+    subscribeProductPrice,
+    unsubscribeFromProduct, 
     getOrderHistory,
     createOrder,
     abortOrder

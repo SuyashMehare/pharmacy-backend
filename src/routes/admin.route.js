@@ -6,7 +6,9 @@ const { getProducts,
     updateProduct, 
     deleteProduct, 
     createManyProducts,
-    updateOrderStatus
+    updateOrderStatus,
+    updateProductPrice,
+    getExecutableOrders
 } = require('../controllers/admin.controller');
 
 
@@ -18,10 +20,12 @@ adminRouter
 .post('/', createProduct)
 .post('/many', createManyProducts)
 .patch('/:id', updateProduct)
+.patch('/product/price/:productId', updateProductPrice)
 .delete('/:id',deleteProduct)
 
 
 adminRouter
+.get('/orders', getExecutableOrders)
 .patch('/order/status', updateOrderStatus)
 
 module.exports = adminRouter

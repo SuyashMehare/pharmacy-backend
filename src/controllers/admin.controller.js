@@ -1,4 +1,6 @@
+const Order = require('../models/orders/order.model');
 const Product = require('../models/others/product.model');
+const { isUserOnline } = require('../services/sse.service');
 const ApiError = require('../utils/ApiError');
 const { sendResponse } = require('../utils/ApiResponse');
 
@@ -110,6 +112,62 @@ async function updateProduct(req, res, next) {
     }
 }
 
+
+async function updateProductPrice(req, res, next) {
+  try {
+    const { productId } = req.params;
+    const { newPrice } = req.body;
+
+    // Get current product
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    // Update price
+    const oldPrice = product.price * 100;
+    product.price = newPrice;
+    await product.save();
+
+    // Create notifications for all subscribers
+    const notifications = product.priceFeedSubscribers.map(subscriberId => ({
+      user: subscriberId,
+      product: productId,
+      oldPrice,
+      newPrice
+    }));
+
+    await Notification.insertMany(notifications);
+
+    // Immediately notify online subscribers
+    product.priceFeedSubscribers.forEach(subscriberId => {
+      if (isUserOnline(subscriberId)) {
+        const eventData = {
+          type: 'PRICE_UPDATE',
+          productId: product._id,
+          productTitle: product.title,
+          oldPrice,
+          newPrice,
+          updatedAt: new Date()
+        };
+        sseService.sendEventToUser(subscriberId, eventData);
+        
+        // Mark as delivered in background
+        Notification.updateOne(
+          { user: subscriberId, product: productId, delivered: false },
+          { delivered: true }
+        ).exec();
+      }
+    });
+
+    sendResponse(res, 200, product, 'Price updated successfully');
+  } catch (error) {
+    next(error)
+  }
+};
+
+
+
 async function deleteProduct(req, res, next) {
     try {
         const { id } = req.params;
@@ -135,10 +193,32 @@ async function deleteProduct(req, res, next) {
 
 /// Order
 // simulate order status change for user order
+async function getExecutableOrders(req, res, next) {
+   try {
+     const orders = await Order.find({$or: [
+         {orderStatus: 'initiated'}, 
+         {orderStatus: 'shipped'}]
+     }).select('_id userId orderStatus amount');
+ 
+     sendResponse(res, 200, orders);
+   } catch (error) {
+        next(error)
+   }
+}
+
 
 async function updateOrderStatus(req, res, next) {
-    
+    const { orderStatus } = req.body;
+    const { orderId } = req.params;
 
+    try {
+        await Order.findByIdAndUpdate(orderId, {
+            orderStatus: 'shipped'
+        });
+
+    } catch (error) {
+        next(error)
+    }
 }
 
 
@@ -148,7 +228,9 @@ module.exports = {
     createProduct,
     createManyProducts,
     updateProduct,
+    updateProductPrice,
     deleteProduct,
 
-    updateOrderStatus
+    updateOrderStatus,
+    getExecutableOrders
 }

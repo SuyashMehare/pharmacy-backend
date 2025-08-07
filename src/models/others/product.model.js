@@ -29,6 +29,10 @@ const productSchema = new Schema({
             message: '{VALUE} is not supported'
         }
     },
+    priceFeedSubscribers: [{
+        type: mongoose.Types.ObjectId,
+        ref: 'RegularUser'
+    }],
     isDeleted: {
         type: Boolean,
         default: false
