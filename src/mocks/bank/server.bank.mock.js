@@ -133,6 +133,6 @@ app.use((req, res, next) => {
 
 conn()
 .then(() => {
-    app.listen(5211, () => console.log('Bank server listening at port 5211'))
+    app.listen(process.env.BANK_PORT, () => console.log('Bank server listening at port 5211'))
 })
 

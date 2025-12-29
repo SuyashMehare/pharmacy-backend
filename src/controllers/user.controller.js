@@ -14,7 +14,7 @@ async function getProducts(req, res, next) {
     try {
         const { page = 1, limit = 10, search } = req.query;
         const query = {};
-
+        
         query.isDeleted = false;
         if (search) {
             query.$or = [
@@ -24,11 +24,16 @@ async function getProducts(req, res, next) {
             ];
         }
 
-        const products = await Product.find(query)
-            .limit(limit * 1)
-            .skip((page - 1) * limit)
-            .sort({ createdAt: -1 });
+        console.log("query", query);
+        
+        // const products = await Product.find(query)
+        //     .limit(limit * 1)
+        //     .skip((page - 1) * limit)
+        //     .sort({ createdAt: -1 });
 
+        const products = await Product.find({})
+
+        console.log("products", products)
         const count = products.length;
         sendResponse(res, 200, {
             products,
