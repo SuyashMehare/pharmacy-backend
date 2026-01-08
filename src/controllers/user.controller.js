@@ -9,13 +9,16 @@ const ApiError = require('../utils/ApiError');
 const { sendResponse } = require('../utils/ApiResponse');
 const { default: mongoose } = require('mongoose');
 const { sendEventToUser, addClient } = require('../services/sse.service');
+const RegularUser = require('../models/users/regularUser.model');
 
 async function getProducts(req, res, next) {
     try {
         const { page = 1, limit = 10, search } = req.query;
         const query = {};
-        
+
         query.isDeleted = false;
+        // query.expiry = { $gt: new Date() }; //todo: expired products shount be consider
+        
         if (search) {
             query.$or = [
                 { title: { $regex: search, $options: 'i' } },
@@ -24,14 +27,25 @@ async function getProducts(req, res, next) {
             ];
         }
 
-        console.log("query", query);
-        
-        const products = await Product.find(query)
+        let products = await Product.find(query)
+            .select("-priceFeedSubscribers -__v -isDeleted -updatedAt")
             .limit(limit * 1)
             .skip((page - 1) * limit)
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean()
 
         const count = products.length;
+
+        if(req.isAuthUserReq) {
+            const oIds = (await RegularUser.findById(req.userId).select("subscribedPriceFeeds -_id -kind")).subscribedPriceFeeds;
+            const subscribeProductPrices = new Set(oIds.map((_a) =>_a.toString()));
+
+            products = products.map((product) => ({ 
+                ...product, 
+                isSubscribed: subscribeProductPrices.has(product._id.toString()) 
+            }));
+        }
+        
         sendResponse(res, 200, {
             products,
             totalPages: Math.ceil(count / limit),
@@ -44,19 +58,33 @@ async function getProducts(req, res, next) {
 }
 
 async function getProductById(req, res, next) {
-    const { productId } = req.query;
-    let product = await Product.findById(productId);
-    sendResponse(res, 201, product);
+    try {
+        const { productId } = req.params;        
+        const product = await Product.findById(productId)
+        .select('-priceFeedSubscribers -isDeleted -__v -updatedAt');
+        
+        if (!product) {
+            throw new ApiError(404, "Product not found or expired");
+        }
+
+        sendResponse(res, 201, product, "Product fetched. Id: " + productId);
+    } catch (error) {
+        next(error);
+    }
 }
 
 async function subscribeProductPrice(req, res, next) {
     const { productId } = req.body
     const userId = req.user.id;
-    
+
     try {
         const product = await Product.findByIdAndUpdate(productId, {
             $addToSet: { priceFeedSubscribers: userId },
         }, { new: true })
+
+        await RegularUser.findByIdAndUpdate(userId,{
+            $addToSet: { subscribedPriceFeeds: productId }
+        })
 
 
         if (!product) {
@@ -87,7 +115,7 @@ async function subscribeProductPrice(req, res, next) {
             await notification.save();
         }
 
-        sendResponse(res, 201, null ,'User successfully subscribed product ' + productId)
+        sendResponse(res, 201, null, 'User successfully subscribed product ' + productId)
     } catch (error) {
         next(error);
     }
@@ -321,8 +349,9 @@ async function fetchCart(req, res, next) {
 
 module.exports = {
     getProducts,
+    getProductById,
     subscribeProductPrice,
-    unsubscribeFromProduct, 
+    unsubscribeFromProduct,
     getOrderHistory,
     createOrder,
     abortOrder
