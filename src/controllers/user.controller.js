@@ -26,14 +26,11 @@ async function getProducts(req, res, next) {
 
         console.log("query", query);
         
-        // const products = await Product.find(query)
-        //     .limit(limit * 1)
-        //     .skip((page - 1) * limit)
-        //     .sort({ createdAt: -1 });
+        const products = await Product.find(query)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .sort({ createdAt: -1 });
 
-        const products = await Product.find({})
-
-        console.log("products", products)
         const count = products.length;
         sendResponse(res, 200, {
             products,
@@ -44,6 +41,12 @@ async function getProducts(req, res, next) {
     } catch (error) {
         next(error);
     }
+}
+
+async function getProductById(req, res, next) {
+    const { productId } = req.query;
+    let product = await Product.findById(productId);
+    sendResponse(res, 201, product);
 }
 
 async function subscribeProductPrice(req, res, next) {
