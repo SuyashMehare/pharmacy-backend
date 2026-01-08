@@ -13,8 +13,8 @@ userRouter
 userRouter.use(authenticate)
 userRouter.use(authorizeRegular)
 userRouter
-.post('/product/subscribe', subscribeProductPrice)
-.post('/product/unsubscribe', unsubscribeFromProduct)
+.post('/product/subscribe/:productId', subscribeProductPrice)
+.post('/product/unsubscribe/:productId', unsubscribeFromProduct)
 
 userRouter
 .get('/order/history', getOrderHistory)

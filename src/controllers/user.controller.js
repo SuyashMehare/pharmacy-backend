@@ -74,7 +74,7 @@ async function getProductById(req, res, next) {
 }
 
 async function subscribeProductPrice(req, res, next) {
-    const { productId } = req.body
+    const { productId } = req.params;
     const userId = req.user.id;
 
     try {
@@ -91,29 +91,29 @@ async function subscribeProductPrice(req, res, next) {
             return res.status(404).json({ error: 'Product not found' });
         }
 
-        addClient(userId, res);
+        // addClient(userId, res);
 
-        const pendingNotifications = await Notification.find({
-            user: userId,
-            product: productId,
-            delivered: false
-        });
+        // const pendingNotifications = await Notification.find({
+        //     user: userId,
+        //     product: productId,
+        //     delivered: false
+        // });
 
 
-        for (const notification of pendingNotifications) {
-            const eventData = {
-                type: 'PRICE_UPDATE',
-                productId: product._id,
-                productTitle: product.title,
-                oldPrice: notification.oldPrice,
-                newPrice: notification.newPrice,
-                updatedAt: notification.createdAt
-            };
+        // for (const notification of pendingNotifications) {
+        //     const eventData = {
+        //         type: 'PRICE_UPDATE',
+        //         productId: product._id,
+        //         productTitle: product.title,
+        //         oldPrice: notification.oldPrice,
+        //         newPrice: notification.newPrice,
+        //         updatedAt: notification.createdAt
+        //     };
 
-            sendEventToUser(userId, eventData);
-            notification.delivered = true;
-            await notification.save();
-        }
+        //     sendEventToUser(userId, eventData);
+        //     notification.delivered = true;
+        //     await notification.save();
+        // }
 
         sendResponse(res, 201, null, 'User successfully subscribed product ' + productId)
     } catch (error) {
@@ -125,16 +125,21 @@ async function unsubscribeFromProduct(req, res, next) {
     try {
         const { productId } = req.params;
         const userId = req.user.id;
-
+        
         // Remove user from product's subscribers
         await Product.findByIdAndUpdate(productId, {
-            $pull: { priceFeedSubscribers: userId }
+            $pull: { priceFeedSubscribers: new mongoose.Types.ObjectId(userId) }
         });
+        
+        await RegularUser.findByIdAndUpdate(userId, {
+            $pull: { subscribedPriceFeeds: new mongoose.Types.ObjectId(productId) }
+        })
 
         // Close SSE connection if it exists
-        removeClient(userId);
+        // removeClient(userId);
 
         res.json({ success: true, message: 'Unsubscribed successfully' });
+        sendResponse(res, 201, null, 'Unsubscribed successfully product ' + productId)
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
