@@ -1,6 +1,7 @@
 
 const Cart = require('../models/others/cart.model')
 const Transaction_Order = require('../models/orders/transaction_order');
+const Notification = require("../models/others/notification.model");
 const Transaction = require('../models/orders/transaction.model');
 const Order = require('../models/orders/order.model');
 const Item = require('../models/orders/item.model');
@@ -72,6 +73,14 @@ async function getProductById(req, res, next) {
         next(error);
     }
 }
+
+async function getUserNotifications(req, res, next) {
+    const userId = req.user.id;
+    const userNotifications = await Notification.find({ user: userId, readed: false }).select("-__v  -delivered -updatedAt");
+
+    sendResponse(res, 200, userNotifications, 'User notifications fetched successfully');
+}
+
 
 async function subscribeProductPrice(req, res, next) {
     const { productId } = req.params;
@@ -355,6 +364,7 @@ async function fetchCart(req, res, next) {
 module.exports = {
     getProducts,
     getProductById,
+    getUserNotifications,
     subscribeProductPrice,
     unsubscribeFromProduct,
     getOrderHistory,
