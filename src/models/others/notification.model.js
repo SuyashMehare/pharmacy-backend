@@ -25,6 +25,10 @@ const notificationSchema = new mongoose.Schema({
   delivered: {
     type: Boolean,
     default: false
+  }, 
+  readed: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

@@ -1,5 +1,6 @@
 const Order = require('../models/orders/order.model');
 const Product = require('../models/others/product.model');
+const Notification = require('../models/others/notification.model');
 const { isUserOnline } = require('../services/sse.service');
 const ApiError = require('../utils/ApiError');
 const { sendResponse } = require('../utils/ApiResponse');
@@ -19,9 +20,11 @@ async function getProducts(req, res, next) {
         }
 
         const products = await Product.find(query)
+            .select("-__v -updatedAt -priceFeedSubscribers")
             .limit(limit * 1)
             .skip((page - 1) * limit)
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            
 
         const count = products.length;
         sendResponse(res, 200, {
@@ -84,6 +87,8 @@ async function updateProduct(req, res, next) {
         const { id } = req.params;
         const { title, description, brand, expiry, price } = req.body;
 
+        console.log(res.body);
+        
         const product = await Product.findById(id);
 
         if (!product) {
@@ -98,6 +103,8 @@ async function updateProduct(req, res, next) {
             throw new ApiError(400, "Expiry date must be in the future");
         }
 
+        const oldPrice = product.price;
+
         product.title = title || product.title;
         product.description = description || product.description;
         product.brand = brand || product.brand;
@@ -106,6 +113,19 @@ async function updateProduct(req, res, next) {
         console.log(product.toObject(), price ? Number(price) * 100 : product.price);
         
         await product.save();
+
+        if(price) {
+            const notifications = product.priceFeedSubscribers.map(subscriberId => ({
+                user: subscriberId,
+                product: id,
+                oldPrice: oldPrice,
+                newPrice: price*100
+            }));
+            
+            await Notification.insertMany(notifications);
+        }
+
+
         sendResponse(res, 200, product, "Product updated successfully");
     } catch (error) {
         next(error);
@@ -125,8 +145,8 @@ async function updateProductPrice(req, res, next) {
     }
 
     // Update price
-    const oldPrice = product.price * 100;
-    product.price = newPrice;
+    const oldPrice = product.price * 100; // # tranform-utility
+    product.price = newPrice; // # tranform-utility
     await product.save();
 
     // Create notifications for all subscribers
@@ -140,25 +160,27 @@ async function updateProductPrice(req, res, next) {
     await Notification.insertMany(notifications);
 
     // Immediately notify online subscribers
-    product.priceFeedSubscribers.forEach(subscriberId => {
-      if (isUserOnline(subscriberId)) {
-        const eventData = {
-          type: 'PRICE_UPDATE',
-          productId: product._id,
-          productTitle: product.title,
-          oldPrice,
-          newPrice,
-          updatedAt: new Date()
-        };
-        sseService.sendEventToUser(subscriberId, eventData);
-        
-        // Mark as delivered in background
-        Notification.updateOne(
-          { user: subscriberId, product: productId, delivered: false },
-          { delivered: true }
-        ).exec();
-      }
-    });
+    /**
+        product.priceFeedSubscribers.forEach(subscriberId => {
+        if (isUserOnline(subscriberId)) {
+            const eventData = {
+            type: 'PRICE_UPDATE',
+            productId: product._id,
+            productTitle: product.title,
+            oldPrice,
+            newPrice,
+            updatedAt: new Date()
+            };
+            sseService.sendEventToUser(subscriberId, eventData);
+            
+            // Mark as delivered in background
+            Notification.updateOne(
+            { user: subscriberId, product: productId, delivered: false },
+            { delivered: true }
+            ).exec();
+        }
+        });
+    */
 
     sendResponse(res, 200, product, 'Price updated successfully');
   } catch (error) {

@@ -12,6 +12,13 @@ async function checkAuthUserReq(req, res, next) {
         }
         
         const token = authHeader.split(' ')[1];
+
+        if(token == 'null') {
+            req.isAuthUserReq = false;
+            next();
+            return;
+        }
+        
         const decoded = decode(token)
         const user = await BaseUser.findById(decoded.id);
 
