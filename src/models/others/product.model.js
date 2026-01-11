@@ -33,6 +33,10 @@ const productSchema = new Schema({
         type: mongoose.Types.ObjectId,
         ref: 'RegularUser'
     }],
+    priceHistory: [{
+        type: mongoose.Types.ObjectId,
+        ref: 'PriceHistory'
+    }],
     isDeleted: {
         type: Boolean,
         default: false

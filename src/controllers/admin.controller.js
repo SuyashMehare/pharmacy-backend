@@ -4,6 +4,7 @@ const Notification = require('../models/others/notification.model');
 const { isUserOnline } = require('../services/sse.service');
 const ApiError = require('../utils/ApiError');
 const { sendResponse } = require('../utils/ApiResponse');
+const PriceHistory = require('../models/others/price_history');
 
 async function getProducts(req, res, next) {
     try {
@@ -87,8 +88,6 @@ async function updateProduct(req, res, next) {
         const { id } = req.params;
         const { title, description, brand, expiry, price } = req.body;
 
-        console.log(res.body);
-        
         const product = await Product.findById(id);
 
         if (!product) {
@@ -110,9 +109,6 @@ async function updateProduct(req, res, next) {
         product.brand = brand || product.brand;
         product.expiry = expiry ? new Date(expiry) : product.expiry;
         product.price = price ? Number(price) * 100 : product.price;
-        console.log(product.toObject(), price ? Number(price) * 100 : product.price);
-        
-        await product.save();
 
         if(price) {
             const notifications = product.priceFeedSubscribers.map(subscriberId => ({
@@ -121,11 +117,19 @@ async function updateProduct(req, res, next) {
                 oldPrice: oldPrice,
                 newPrice: price*100
             }));
-            
+
+            const createPriceHistory = new PriceHistory({
+                product: id,
+                price: price*100,
+                updateBy: req.user.id
+            });
+
+            product.priceHistory.addToSet(createPriceHistory._id);
             await Notification.insertMany(notifications);
+            await createPriceHistory.save();
         }
 
-
+        await product.save();
         sendResponse(res, 200, product, "Product updated successfully");
     } catch (error) {
         next(error);

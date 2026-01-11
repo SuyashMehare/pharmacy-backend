@@ -1,6 +1,6 @@
 const userRouter = require('express').Router();
 
-const { getProducts, createOrder, getOrderHistory, abortOrder, subscribeProductPrice, unsubscribeFromProduct, getUserNotifications 
+const { getProducts, createOrder, getOrderHistory, abortOrder, subscribeProductPrice, unsubscribeFromProduct, getUserNotifications, getProductById 
 } = require('../controllers/user.controller');
 const { authorizeRegular, authenticate } = require('../middlewares/auth/auth.middleware');
 const { checkAuthUserReq } = require('../middlewares/other/checkAuthUserReq.middleware');
@@ -9,6 +9,7 @@ const { sendResponse } = require('../utils/ApiResponse');
 
 userRouter
 .get('/', checkAuthUserReq, getProducts)
+.get('/product/:productId', getProductById)
 
 userRouter.use(authenticate)
 userRouter.use(authorizeRegular)
