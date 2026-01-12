@@ -1,6 +1,6 @@
 const userRouter = require('express').Router();
 
-const { getProducts, createOrder, getOrderHistory, abortOrder, subscribeProductPrice, unsubscribeFromProduct, getUserNotifications, getProductById 
+const { getProducts, createOrder, getOrderHistory, abortOrder, subscribeProductPrice, unsubscribeFromProduct, getUserNotifications, getProductById, markNotificationAsRead 
 } = require('../controllers/user.controller');
 const { authorizeRegular, authenticate } = require('../middlewares/auth/auth.middleware');
 const { checkAuthUserReq } = require('../middlewares/other/checkAuthUserReq.middleware');
@@ -16,6 +16,7 @@ userRouter.use(authorizeRegular)
 
 userRouter
 .get('/notifications', getUserNotifications)
+.patch('/readed/:notificationId', markNotificationAsRead)
 
 userRouter
 .post('/product/subscribe/:productId', subscribeProductPrice)

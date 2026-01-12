@@ -83,6 +83,25 @@ async function getUserNotifications(req, res, next) {
     sendResponse(res, 200, userNotifications, 'User notifications fetched successfully');
 }
 
+async function markNotificationAsRead(req, res, next) {
+    try {
+        const { notificationId } = req.params;
+
+        if (!notificationId) {
+            return sendResponse(req, 400, null, 'User not found or notificationId not found')
+        }
+
+        await Notification.findByIdAndUpdate(notificationId, {
+            readed: true
+        });
+
+        sendResponse(res, 201, null, `Notification ${notificationId} marked as readed`);
+    } catch (error) {
+        console.log(error);
+        next(error)
+    }
+}
+
 
 async function subscribeProductPrice(req, res, next) {
     const { productId } = req.params;
@@ -367,6 +386,7 @@ module.exports = {
     getProducts,
     getProductById,
     getUserNotifications,
+    markNotificationAsRead,
     subscribeProductPrice,
     unsubscribeFromProduct,
     getOrderHistory,
