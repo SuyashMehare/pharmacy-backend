@@ -19,7 +19,7 @@ async function getProducts(req, res, next) {
 
         query.isDeleted = false;
         // query.expiry = { $gt: new Date() }; //todo: expired products shount be consider
-        
+
         if (search) {
             query.$or = [
                 { title: { $regex: search, $options: 'i' } },
@@ -29,7 +29,7 @@ async function getProducts(req, res, next) {
         }
 
         let products = await Product.find(query)
-            .select("-priceFeedSubscribers -__v -isDeleted -updatedAt")
+            .select("-priceFeedSubscribers -__v -isDeleted -updatedAt -priceHistory")
             .limit(limit * 1)
             .skip((page - 1) * limit)
             .sort({ createdAt: -1 })
@@ -37,16 +37,16 @@ async function getProducts(req, res, next) {
 
         const count = products.length;
 
-        if(req.isAuthUserReq) {
+        if (req.isAuthUserReq) {
             const oIds = (await RegularUser.findById(req.userId).select("subscribedPriceFeeds -_id -kind")).subscribedPriceFeeds;
-            const subscribeProductPrices = new Set(oIds.map((_a) =>_a.toString()));
+            const subscribeProductPrices = new Set(oIds.map((_a) => _a.toString()));
 
-            products = products.map((product) => ({ 
-                ...product, 
-                isSubscribed: subscribeProductPrices.has(product._id.toString()) 
+            products = products.map((product) => ({
+                ...product,
+                isSubscribed: subscribeProductPrices.has(product._id.toString())
             }));
         }
-        
+
         sendResponse(res, 200, {
             products,
             totalPages: Math.ceil(count / limit),
@@ -60,15 +60,17 @@ async function getProducts(req, res, next) {
 
 async function getProductById(req, res, next) {
     try {
-        const { productId } = req.params;        
+        const { productId } = req.params;
         const product = await Product.findById(productId)
-        .select('-priceFeedSubscribers -isDeleted -__v -updatedAt');
-        
+            .populate('priceHistory', '-__v -updatedAt -product -updateBy')
+            .select('-priceFeedSubscribers -isDeleted -__v -updatedAt');
+
+
         if (!product) {
             throw new ApiError(404, "Product not found or expired");
         }
 
-        sendResponse(res, 201, product, "Product fetched. Id: " + productId);
+        sendResponse(res, 200, product, "Product fetched. Id: " + productId);
     } catch (error) {
         next(error);
     }
@@ -81,6 +83,25 @@ async function getUserNotifications(req, res, next) {
     sendResponse(res, 200, userNotifications, 'User notifications fetched successfully');
 }
 
+async function markNotificationAsRead(req, res, next) {
+    try {
+        const { notificationId } = req.params;
+
+        if (!notificationId) {
+            return sendResponse(req, 400, null, 'User not found or notificationId not found')
+        }
+
+        await Notification.findByIdAndUpdate(notificationId, {
+            readed: true
+        });
+
+        sendResponse(res, 201, null, `Notification ${notificationId} marked as readed`);
+    } catch (error) {
+        console.log(error);
+        next(error)
+    }
+}
+
 
 async function subscribeProductPrice(req, res, next) {
     const { productId } = req.params;
@@ -91,7 +112,7 @@ async function subscribeProductPrice(req, res, next) {
             $addToSet: { priceFeedSubscribers: userId },
         }, { new: true })
 
-        await RegularUser.findByIdAndUpdate(userId,{
+        await RegularUser.findByIdAndUpdate(userId, {
             $addToSet: { subscribedPriceFeeds: productId }
         })
 
@@ -134,12 +155,12 @@ async function unsubscribeFromProduct(req, res, next) {
     try {
         const { productId } = req.params;
         const userId = req.user.id;
-        
+
         // Remove user from product's subscribers
         await Product.findByIdAndUpdate(productId, {
             $pull: { priceFeedSubscribers: new mongoose.Types.ObjectId(userId) }
         });
-        
+
         await RegularUser.findByIdAndUpdate(userId, {
             $pull: { subscribedPriceFeeds: new mongoose.Types.ObjectId(productId) }
         })
@@ -365,6 +386,7 @@ module.exports = {
     getProducts,
     getProductById,
     getUserNotifications,
+    markNotificationAsRead,
     subscribeProductPrice,
     unsubscribeFromProduct,
     getOrderHistory,
