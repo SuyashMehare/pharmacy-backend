@@ -1,4 +1,14 @@
+const fs = require('fs');
+const multer  = require('multer');
 const { authenticate, authorizeAdmin, authorizeRegular, authorizeRoles} = require('../middlewares/auth/auth.middleware')
+const { uploadDir } = require('../utils/fileUploadDirectory')
+
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
 
 const adminRouter = require('express').Router()
 const { getProducts, 
@@ -17,7 +27,7 @@ adminRouter.use(authorizeAdmin);
 
 adminRouter
 .get('/', getProducts)
-.post('/', createProduct)
+.post('/', upload.single('banner'), createProduct)
 .post('/many', createManyProducts)
 .patch('/:id', updateProduct)
 .patch('/product/price/:productId', updateProductPrice)
