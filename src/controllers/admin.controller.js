@@ -3,6 +3,7 @@ const Product = require('../models/others/product.model');
 const { isUserOnline } = require('../services/sse.service');
 const ApiError = require('../utils/ApiError');
 const { sendResponse } = require('../utils/ApiResponse');
+const { uploadImageToCloudinary } = require('../services/cloudinary.service');
 
 async function getProducts(req, res, next) {
     try {
@@ -38,9 +39,14 @@ async function getProducts(req, res, next) {
 async function createProduct(req, res, next) {
     try {
         const { title, description, brand, expiry, price } = req.body;
+        const file = req.file;
 
         if (!title || !description || !brand || !expiry || !price) {
             throw new ApiError(400, "All fields are required");
+        }
+
+        if (!file) {
+           throw new ApiError(400, "Banner image is required");
         }
 
         if (isNaN(price)) {
@@ -51,14 +57,21 @@ async function createProduct(req, res, next) {
             throw new ApiError(400, "Expiry date must be in the future");
         }
 
+        const uploadResult = await uploadImageToCloudinary(req.file.buffer, { folder: process.env.CLOUDINARY_UPLOAD_BANNER_FOLDER});
+
+        if (!uploadResult.success) {
+            throw new ApiError(500, uploadResult.error)
+        }
+
         const product = await Product.create({
             title,
             description,
             brand,
+            banner_url: uploadResult.url,
             expiry: new Date(expiry),
             price: Number(price) * 100
         });
-
+        
         sendResponse(res, 201, product, "Product created successfully");
     } catch (error) {
         next(error)
@@ -208,7 +221,6 @@ async function getExecutableOrders(req, res, next) {
 
 
 async function updateOrderStatus(req, res, next) {
-    const { orderStatus } = req.body;
     const { orderId } = req.params;
 
     try {

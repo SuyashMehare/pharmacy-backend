@@ -321,6 +321,7 @@ async function fetchCart(req, res, next) {
 
 module.exports = {
     getProducts,
+    getProductById,
     subscribeProductPrice,
     unsubscribeFromProduct, 
     getOrderHistory,

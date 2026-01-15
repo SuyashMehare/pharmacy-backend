@@ -6,6 +6,10 @@ const productSchema = new Schema({
         type: String,
         required: true
     },
+    banner_url: {
+        type: String,
+        required: true
+    },
     description: {
         type: String,
         required: true
