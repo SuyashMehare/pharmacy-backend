@@ -1,19 +1,26 @@
 const userRouter = require('express').Router();
 
-const { getProducts, createOrder, getOrderHistory, abortOrder, subscribeProductPrice, unsubscribeFromProduct 
+const { getProducts, createOrder, getOrderHistory, abortOrder, subscribeProductPrice, unsubscribeFromProduct, getUserNotifications, getProductById, markNotificationAsRead 
 } = require('../controllers/user.controller');
 const { authorizeRegular, authenticate } = require('../middlewares/auth/auth.middleware');
+const { checkAuthUserReq } = require('../middlewares/other/checkAuthUserReq.middleware');
 const { sendResponse } = require('../utils/ApiResponse');
 
 
 userRouter
-.get('/', getProducts)
+.get('/', checkAuthUserReq, getProducts)
+.get('/product/:productId', getProductById)
 
 userRouter.use(authenticate)
 userRouter.use(authorizeRegular)
+
 userRouter
-.post('/product/subscribe', subscribeProductPrice)
-.post('/product/unsubscribe', unsubscribeFromProduct)
+.get('/notifications', getUserNotifications)
+.patch('/readed/:notificationId', markNotificationAsRead)
+
+userRouter
+.post('/product/subscribe/:productId', subscribeProductPrice)
+.post('/product/unsubscribe/:productId', unsubscribeFromProduct)
 
 userRouter
 .get('/order/history', getOrderHistory)

@@ -1,6 +1,7 @@
 
 const Cart = require('../models/others/cart.model')
 const Transaction_Order = require('../models/orders/transaction_order');
+const Notification = require("../models/others/notification.model");
 const Transaction = require('../models/orders/transaction.model');
 const Order = require('../models/orders/order.model');
 const Item = require('../models/orders/item.model');
@@ -9,13 +10,16 @@ const ApiError = require('../utils/ApiError');
 const { sendResponse } = require('../utils/ApiResponse');
 const { default: mongoose } = require('mongoose');
 const { sendEventToUser, addClient } = require('../services/sse.service');
+const RegularUser = require('../models/users/regularUser.model');
 
 async function getProducts(req, res, next) {
     try {
         const { page = 1, limit = 10, search } = req.query;
         const query = {};
-        
+
         query.isDeleted = false;
+        // query.expiry = { $gt: new Date() }; //todo: expired products shount be consider
+
         if (search) {
             query.$or = [
                 { title: { $regex: search, $options: 'i' } },
@@ -24,14 +28,25 @@ async function getProducts(req, res, next) {
             ];
         }
 
-        console.log("query", query);
-        
-        const products = await Product.find(query)
+        let products = await Product.find(query)
+            .select("-priceFeedSubscribers -__v -isDeleted -updatedAt -priceHistory")
             .limit(limit * 1)
             .skip((page - 1) * limit)
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean()
 
         const count = products.length;
+
+        if (req.isAuthUserReq) {
+            const oIds = (await RegularUser.findById(req.userId).select("subscribedPriceFeeds -_id -kind")).subscribedPriceFeeds;
+            const subscribeProductPrices = new Set(oIds.map((_a) => _a.toString()));
+
+            products = products.map((product) => ({
+                ...product,
+                isSubscribed: subscribeProductPrices.has(product._id.toString())
+            }));
+        }
+
         sendResponse(res, 200, {
             products,
             totalPages: Math.ceil(count / limit),
@@ -44,50 +59,93 @@ async function getProducts(req, res, next) {
 }
 
 async function getProductById(req, res, next) {
-    const { productId } = req.query;
-    let product = await Product.findById(productId);
-    sendResponse(res, 201, product);
+    try {
+        const { productId } = req.params;
+        const product = await Product.findById(productId)
+            .populate('priceHistory', '-__v -updatedAt -product -updateBy')
+            .select('-priceFeedSubscribers -isDeleted -__v -updatedAt');
+
+
+        if (!product) {
+            throw new ApiError(404, "Product not found or expired");
+        }
+
+        sendResponse(res, 200, product, "Product fetched. Id: " + productId);
+    } catch (error) {
+        next(error);
+    }
 }
 
-async function subscribeProductPrice(req, res, next) {
-    const { productId } = req.body
+async function getUserNotifications(req, res, next) {
     const userId = req.user.id;
-    
+    const userNotifications = await Notification.find({ user: userId, readed: false }).select("-__v  -delivered -updatedAt");
+
+    sendResponse(res, 200, userNotifications, 'User notifications fetched successfully');
+}
+
+async function markNotificationAsRead(req, res, next) {
+    try {
+        const { notificationId } = req.params;
+
+        if (!notificationId) {
+            return sendResponse(req, 400, null, 'User not found or notificationId not found')
+        }
+
+        await Notification.findByIdAndUpdate(notificationId, {
+            readed: true
+        });
+
+        sendResponse(res, 201, null, `Notification ${notificationId} marked as readed`);
+    } catch (error) {
+        console.log(error);
+        next(error)
+    }
+}
+
+
+async function subscribeProductPrice(req, res, next) {
+    const { productId } = req.params;
+    const userId = req.user.id;
+
     try {
         const product = await Product.findByIdAndUpdate(productId, {
             $addToSet: { priceFeedSubscribers: userId },
         }, { new: true })
+
+        await RegularUser.findByIdAndUpdate(userId, {
+            $addToSet: { subscribedPriceFeeds: productId }
+        })
 
 
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
         }
 
-        addClient(userId, res);
+        // addClient(userId, res);
 
-        const pendingNotifications = await Notification.find({
-            user: userId,
-            product: productId,
-            delivered: false
-        });
+        // const pendingNotifications = await Notification.find({
+        //     user: userId,
+        //     product: productId,
+        //     delivered: false
+        // });
 
 
-        for (const notification of pendingNotifications) {
-            const eventData = {
-                type: 'PRICE_UPDATE',
-                productId: product._id,
-                productTitle: product.title,
-                oldPrice: notification.oldPrice,
-                newPrice: notification.newPrice,
-                updatedAt: notification.createdAt
-            };
+        // for (const notification of pendingNotifications) {
+        //     const eventData = {
+        //         type: 'PRICE_UPDATE',
+        //         productId: product._id,
+        //         productTitle: product.title,
+        //         oldPrice: notification.oldPrice,
+        //         newPrice: notification.newPrice,
+        //         updatedAt: notification.createdAt
+        //     };
 
-            sendEventToUser(userId, eventData);
-            notification.delivered = true;
-            await notification.save();
-        }
+        //     sendEventToUser(userId, eventData);
+        //     notification.delivered = true;
+        //     await notification.save();
+        // }
 
-        sendResponse(res, 201, null ,'User successfully subscribed product ' + productId)
+        sendResponse(res, 201, null, 'User successfully subscribed product ' + productId)
     } catch (error) {
         next(error);
     }
@@ -100,13 +158,18 @@ async function unsubscribeFromProduct(req, res, next) {
 
         // Remove user from product's subscribers
         await Product.findByIdAndUpdate(productId, {
-            $pull: { priceFeedSubscribers: userId }
+            $pull: { priceFeedSubscribers: new mongoose.Types.ObjectId(userId) }
         });
 
+        await RegularUser.findByIdAndUpdate(userId, {
+            $pull: { subscribedPriceFeeds: new mongoose.Types.ObjectId(productId) }
+        })
+
         // Close SSE connection if it exists
-        removeClient(userId);
+        // removeClient(userId);
 
         res.json({ success: true, message: 'Unsubscribed successfully' });
+        sendResponse(res, 201, null, 'Unsubscribed successfully product ' + productId)
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -322,8 +385,10 @@ async function fetchCart(req, res, next) {
 module.exports = {
     getProducts,
     getProductById,
+    getUserNotifications,
+    markNotificationAsRead,
     subscribeProductPrice,
-    unsubscribeFromProduct, 
+    unsubscribeFromProduct,
     getOrderHistory,
     createOrder,
     abortOrder

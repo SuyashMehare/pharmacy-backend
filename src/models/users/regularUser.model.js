@@ -26,6 +26,10 @@ const regularUserSchema = new Schema({
     chronicConditions: [String],
     primaryPhysician: String
   },
+  subscribedPriceFeeds: [{
+    type: mongoose.Types.ObjectId,
+    ref: 'Product'
+  }],
 });
 
 const RegularUser = BaseUser.discriminator('RegularUser', regularUserSchema);
